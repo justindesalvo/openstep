@@ -11,15 +11,14 @@ public sealed class GlobalMouseHook : IDisposable
     private readonly int _doubleClickWidth;
     private readonly int _doubleClickHeight;
     private readonly Func<int, int, bool> _shouldIgnoreClick;
-    private readonly NativeMethods.LowLevelHookProc _callback;
+    private readonly LowLevelHookThread _hookThread;
     private PendingLeftClick? _pendingLeftClick;
     private System.Threading.Timer? _pendingLeftClickTimer;
-    private IntPtr _hookHandle;
 
     public GlobalMouseHook(Func<int, int, bool>? shouldIgnoreClick = null)
     {
         _shouldIgnoreClick = shouldIgnoreClick ?? ((_, _) => false);
-        _callback = HookCallback;
+        _hookThread = new LowLevelHookThread(NativeMethods.WH_MOUSE_LL, HookCallback);
         _doubleClickTime = TimeSpan.FromMilliseconds(Math.Clamp(NativeMethods.GetDoubleClickTime(), 250, 900));
         _doubleClickWidth = Math.Max(4, NativeMethods.GetSystemMetrics(NativeMethods.SM_CXDOUBLECLK));
         _doubleClickHeight = Math.Max(4, NativeMethods.GetSystemMetrics(NativeMethods.SM_CYDOUBLECLK));
@@ -27,20 +26,11 @@ public sealed class GlobalMouseHook : IDisposable
 
     public event EventHandler<ClickCapturedEventArgs>? ClickCaptured;
 
-    public bool IsRunning => _hookHandle != IntPtr.Zero;
+    public bool IsRunning => _hookThread.IsRunning;
 
     public void Start()
     {
-        if (IsRunning)
-        {
-            return;
-        }
-
-        _hookHandle = NativeMethods.SetWindowsHookEx(NativeMethods.WH_MOUSE_LL, _callback, IntPtr.Zero, 0);
-        if (_hookHandle == IntPtr.Zero)
-        {
-            throw new InvalidOperationException("Unable to install the global mouse hook.");
-        }
+        _hookThread.Start("global mouse hook");
     }
 
     public void Stop()
@@ -50,9 +40,8 @@ public sealed class GlobalMouseHook : IDisposable
             return;
         }
 
+        _hookThread.Stop();
         FlushPendingLeftClick();
-        NativeMethods.UnhookWindowsHookEx(_hookHandle);
-        _hookHandle = IntPtr.Zero;
     }
 
     public void Dispose()
@@ -79,7 +68,7 @@ public sealed class GlobalMouseHook : IDisposable
             }
         }
 
-        return NativeMethods.CallNextHookEx(_hookHandle, nCode, wParam, lParam);
+        return NativeMethods.CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam);
     }
 
     private void HandleLeftClick(int x, int y)

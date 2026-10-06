@@ -28,6 +28,7 @@ OpenSteps records what you do on Windows, captures screenshots and click context
 - Saves recordings locally as editable sessions.
 - Lets you rename guides, edit step titles and descriptions, reorder steps, delete steps, and insert manual steps.
 - Lets you capture a screenshot for a manual step.
+- Trims recordings to the core steps: local rules flag repeated clicks, focus clicks, navigation keys, and clicks covered by typing, with optional OpenAI suggestions (step text only, never screenshots). You review every removal before it happens.
 - Supports screenshot redaction, cropping, annotations, and screenshot replacement before export.
 - Collapses long step cards so larger recordings are easier to edit.
 - Exports portable Markdown or HTML guides with relative image links.

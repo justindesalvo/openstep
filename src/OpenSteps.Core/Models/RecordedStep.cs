@@ -179,6 +179,9 @@ public sealed class RecordedStep
 
     public bool TypedCharactersStored { get; set; }
 
+    /// <summary>True once the user has kept this step in a trim review, so it is not suggested again automatically.</summary>
+    public bool TrimReviewed { get; set; }
+
     public string DisplayTitle => string.IsNullOrWhiteSpace(UserTitle) ? GeneratedTitle : UserTitle!;
 
     public string MetadataSummary

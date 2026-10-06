@@ -71,6 +71,12 @@
                             Click="RecordMore_Click"
                             Style="{StaticResource IconButton}"
                             Width="36" Height="36" />
+                    <Button Content="&#xE71C;"
+                            ToolTip="Trim to core steps"
+                            Click="TrimSteps_Click"
+                            Style="{StaticResource IconButton}"
+                            Width="36" Height="36"
+                            Margin="6,0,0,0" />
                     <Button Content="&#xE74E;"
                             ToolTip="Save"
                             Click="SaveSession_Click"

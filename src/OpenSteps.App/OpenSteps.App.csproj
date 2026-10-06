@@ -6,6 +6,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Resource Include="..\..\img\OpenShelf.png">
       <Link>img\OpenShelf.png</Link>
     </Resource>

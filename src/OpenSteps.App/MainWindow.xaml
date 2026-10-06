@@ -178,7 +178,7 @@
                         Visibility="Collapsed" />
                 <Button x:Name="StopRecordingButton"
                         Content="&#xE71A;"
-                        ToolTip="Stop recording"
+                        ToolTip="Stop recording (Ctrl+Shift+F9)"
                         Click="StopRecording_Click"
                         Style="{StaticResource DangerPillIconButton}"
                         Margin="8,0,0,0"

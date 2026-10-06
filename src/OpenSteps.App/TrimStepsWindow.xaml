@@ -1,0 +1,138 @@
+<Window x:Class="OpenSteps.App.TrimStepsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Trim steps" Width="760" Height="680" MinWidth="600" MinHeight="480"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize"
+        Background="{StaticResource AppBackgroundBrush}">
+    <Grid Margin="20">
+        <Border Style="{StaticResource Card}" Padding="24">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <StackPanel Grid.Row="0">
+                    <TextBlock Text="Trim to the core steps"
+                               Style="{StaticResource DisplayText}"
+                               FontSize="20" />
+                    <TextBlock Text="Unchecked steps will be removed. Suggestions are pre-unchecked; review them, then remove."
+                               Style="{StaticResource SubtleText}"
+                               TextWrapping="Wrap"
+                               Margin="0,6,0,14" />
+                </StackPanel>
+
+                <WrapPanel Grid.Row="1" Margin="0,0,0,12">
+                    <Button Content="Suggest (rules)"
+                            Click="SuggestRules_Click"
+                            ToolTip="Local rules: repeated clicks, focus clicks, navigation keys, clicks covered by typing"
+                            Padding="14,0" Height="32" />
+                    <Button x:Name="SuggestAiButton"
+                            Content="Suggest with AI"
+                            Click="SuggestAi_Click"
+                            ToolTip="Sends step titles and window/element names (no screenshots) to OpenAI"
+                            Margin="8,0,0,0"
+                            Padding="14,0" Height="32" />
+                    <Button Content="Keep all"
+                            Click="KeepAll_Click"
+                            Margin="8,0,0,0"
+                            Padding="14,0" Height="32" />
+                    <TextBlock x:Name="StatusText"
+                               Style="{StaticResource SubtleText}"
+                               VerticalAlignment="Center"
+                               TextWrapping="Wrap"
+                               Margin="12,0,0,0" />
+                </WrapPanel>
+
+                <Border Grid.Row="2"
+                        Style="{StaticResource Card}"
+                        Background="{StaticResource SubtleSurfaceBrush}"
+                        Padding="4">
+                    <ListBox x:Name="RowsList"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             HorizontalContentAlignment="Stretch"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <CheckBox IsChecked="{Binding Keep, Mode=TwoWay}" Margin="4,6">
+                                    <StackPanel>
+                                        <TextBlock TextWrapping="Wrap">
+                                            <Run Text="{Binding Number, Mode=OneWay, StringFormat='Step {0}:'}" FontWeight="SemiBold" />
+                                            <Run Text="{Binding Title, Mode=OneWay}" />
+                                        </TextBlock>
+                                        <TextBlock Text="{Binding Reason}"
+                                                   Foreground="{StaticResource WarningBrush}"
+                                                   FontSize="12"
+                                                   TextWrapping="Wrap"
+                                                   Margin="0,2,0,0">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Reason}" Value="{x:Null}">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </CheckBox>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Border>
+
+                <Expander Grid.Row="3" Header="OpenAI settings" Margin="0,14,0,0">
+                    <Grid Margin="0,10,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="API key" VerticalAlignment="Center" Margin="0,0,12,0" />
+                        <PasswordBox x:Name="ApiKeyBox" Grid.Row="0" Grid.Column="1" Height="30" VerticalContentAlignment="Center" />
+                        <Button Grid.Row="0" Grid.Column="2" Content="Clear key" Click="ClearKey_Click" Margin="8,0,0,0" Padding="12,0" Height="30" />
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Model" VerticalAlignment="Center" Margin="0,8,12,0" />
+                        <TextBox x:Name="ModelBox" Grid.Row="1" Grid.Column="1" Height="30" Margin="0,8,0,0" VerticalContentAlignment="Center" />
+                        <Button Grid.Row="1" Grid.Column="2" Content="Save" Click="SaveAiSettings_Click" Margin="8,8,0,0" Padding="12,0" Height="30" />
+
+                        <TextBlock x:Name="ApiKeyHint"
+                                   Grid.Row="2" Grid.ColumnSpan="3"
+                                   Style="{StaticResource SubtleText}"
+                                   FontSize="12"
+                                   TextWrapping="Wrap"
+                                   Margin="0,8,0,0" />
+                    </Grid>
+                </Expander>
+
+                <Grid Grid.Row="4" Margin="0,18,0,0">
+                    <CheckBox x:Name="SuggestAfterRecordingBox"
+                              Content="Suggest trimming after each recording"
+                              VerticalAlignment="Center" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Content="Cancel"
+                                Click="Cancel_Click"
+                                Padding="18,0" Height="34" />
+                        <Button x:Name="ApplyButton"
+                                Click="Apply_Click"
+                                Margin="10,0,0,0"
+                                Padding="18,0" Height="34"
+                                Style="{StaticResource PrimaryActionButton}" />
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

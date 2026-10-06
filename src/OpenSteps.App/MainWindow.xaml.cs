@@ -19,6 +19,7 @@ public sealed record ScreenshotModeOption(string DisplayName, ScreenshotMode Mod
 public partial class MainWindow : Window, INotifyPropertyChanged
 {
     private const int ActivationSettleDelayMs = 150;
+    private const int StopRecordingHotkeyId = 0x4F53;
 
     private readonly ActiveWindowService _activeWindowService = new();
     private readonly ClickTargetClassifier _clickTargetClassifier = new();
@@ -53,12 +54,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private AppSettings _settings = new();
     private ScreenshotMode _screenshotMode = ScreenshotMode.FullDesktop;
     private bool _loadingSettings;
+    private IntPtr _mainWindowHandle;
+    private bool _stopHotkeyRegistered;
 
     public MainWindow()
     {
         _screenshotService = new ScreenshotService(_monitorService);
         InitializeComponent();
         DataContext = this;
+        SourceInitialized += MainWindow_SourceInitialized;
         Loaded += async (_, _) =>
         {
             PositionControllerBottomCenter();
@@ -205,7 +209,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             _keyboardHook.Start();
 
             ShowRecordingTray();
-            Hide();
+            ShowRecorderBarDuringRecording();
         }
         catch (Exception ex)
         {
@@ -327,7 +331,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             try
             {
-                var element = _uiAutomationService.GetElementAt(x, y);
+                var element = await Task.Run(() => _uiAutomationService.GetElementAt(x, y));
                 step.UiAutomationSucceeded = element.Quality != UiAutomationQuality.UiAutomationFailed;
                 step.UiAutomationQuality = element.Quality;
                 step.UsefulElementFound = element.UsefulElementFound;
@@ -359,7 +363,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             try
             {
-                var screenshot = await _screenshotService.CaptureAsync(GetSessionImagesDirectory(), step.Index, x, y, ScreenshotMode, resolution?.TargetHwnd ?? IntPtr.Zero);
+                var screenshot = await _screenshotService.CaptureAsync(GetSessionImagesDirectory(), CreateScreenshotFileName(step, "capture"), x, y, ScreenshotMode, resolution?.TargetHwnd ?? IntPtr.Zero);
                 ApplyScreenshotResult(step, screenshot);
                 step.ScreenshotCaptured = true;
             }
@@ -490,6 +494,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             ShortcutName = shortcutName,
             TypedCharactersStored = false,
             ScreenshotPath = previous?.ScreenshotPath,
+            ScreenshotRelativePath = previous?.ScreenshotRelativePath,
             ScreenshotCaptured = previous?.ScreenshotCaptured == true,
             ClickX = previous?.ClickX ?? 0,
             ClickY = previous?.ClickY ?? 0,
@@ -556,7 +561,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         try
         {
-            var screenshot = await _screenshotService.CaptureAsync(GetSessionImagesDirectory(), $"step-{step.Index:000}-{suffix}.png", captureX, captureY, ScreenshotMode, drawHighlight);
+            var screenshot = await _screenshotService.CaptureAsync(GetSessionImagesDirectory(), CreateScreenshotFileName(step, suffix), captureX, captureY, ScreenshotMode, drawHighlight);
             ApplyScreenshotResult(step, screenshot);
             step.ScreenshotCaptured = true;
         }
@@ -591,6 +596,53 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         await RemoveTrailingStopNoiseStepAsync();
 
         ShowSessionEditor();
+        await SaveSessionAsync(showMessage: false);
+
+        if (_settings.SuggestTrimAfterRecording)
+        {
+            var suggestions = StepTrimmer.SuggestRemovals(Steps.ToList());
+            var unreviewedIds = Steps.Where(step => !step.TrimReviewed).Select(step => step.Id).ToHashSet();
+            var newSuggestions = suggestions.Where(suggestion => unreviewedIds.Contains(suggestion.StepId)).ToList();
+            if (newSuggestions.Count > 0)
+            {
+                await ShowTrimStepsAsync(newSuggestions);
+            }
+        }
+    }
+
+    internal async Task TrimStepsFromEditorAsync()
+    {
+        await ShowTrimStepsAsync(StepTrimmer.SuggestRemovals(Steps.ToList()));
+    }
+
+    private async Task ShowTrimStepsAsync(IReadOnlyList<StepTrimSuggestion> suggestions)
+    {
+        if (Steps.Count == 0)
+        {
+            return;
+        }
+
+        var window = new TrimStepsWindow(Steps.ToList(), GetCurrentSessionTitle(), _settings, SaveSettingsAsync, suggestions)
+        {
+            Owner = _editorWindow
+        };
+
+        if (window.ShowDialog() != true)
+        {
+            return;
+        }
+
+        foreach (var step in window.StepsToKeep)
+        {
+            step.TrimReviewed = true;
+        }
+
+        foreach (var step in window.StepsToRemove)
+        {
+            Steps.Remove(step);
+        }
+
+        RenumberSteps();
         await SaveSessionAsync(showMessage: false);
     }
 
@@ -861,6 +913,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var image = new BitmapImage();
         image.BeginInit();
         image.CacheOption = BitmapCacheOption.OnLoad;
+        image.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
         image.UriSource = new Uri(step.EffectiveScreenshotPath, UriKind.Absolute);
         image.EndInit();
         image.Freeze();
@@ -1052,7 +1105,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             try
             {
-                var element = _uiAutomationService.GetElementAt(x, y);
+                var element = await Task.Run(() => _uiAutomationService.GetElementAt(x, y));
                 step.UiAutomationSucceeded = element.Quality != UiAutomationQuality.UiAutomationFailed;
                 step.UiAutomationQuality = element.Quality;
                 step.UsefulElementFound = element.UsefulElementFound;
@@ -1085,7 +1138,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 step.UserTitle = title.Title;
             }
 
-            var screenshot = await _screenshotService.CaptureAsync(GetSessionImagesDirectory(), $"step-{step.Index:000}-manual.png", x, y, ScreenshotMode, resolution.TargetHwnd);
+            var screenshot = await _screenshotService.CaptureAsync(GetSessionImagesDirectory(), CreateScreenshotFileName(step, "manual"), x, y, ScreenshotMode, resolution.TargetHwnd);
             ApplyScreenshotResult(step, screenshot);
             step.ScreenshotCaptured = true;
             SyncSessionOrder();
@@ -1127,8 +1180,62 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         await StartRecordingAsync();
     }
 
+    private void MainWindow_SourceInitialized(object? sender, EventArgs e)
+    {
+        _mainWindowHandle = new WindowInteropHelper(this).Handle;
+        HwndSource.FromHwnd(_mainWindowHandle)?.AddHook(WndProc);
+        _stopHotkeyRegistered = NativeMethodsForApp.RegisterHotKey(
+            _mainWindowHandle,
+            StopRecordingHotkeyId,
+            NativeMethodsForApp.MOD_CONTROL | NativeMethodsForApp.MOD_SHIFT | NativeMethodsForApp.MOD_NOREPEAT,
+            NativeMethodsForApp.VK_F9);
+    }
+
+    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg == NativeMethodsForApp.WM_HOTKEY && wParam.ToInt32() == StopRecordingHotkeyId)
+        {
+            handled = true;
+            if (_isRecording)
+            {
+                Dispatcher.BeginInvoke(async () => await StopRecordingAsync());
+            }
+        }
+
+        return IntPtr.Zero;
+    }
+
+    // Keep the recorder bar on screen so Stop is one click away, but hide it from screenshots.
+    // Falls back to hiding the bar on Windows builds that cannot exclude a window from capture.
+    private void ShowRecorderBarDuringRecording()
+    {
+        if (SetCaptureExclusion(true))
+        {
+            Show();
+            Topmost = true;
+        }
+        else
+        {
+            Hide();
+        }
+    }
+
+    private bool SetCaptureExclusion(bool exclude)
+    {
+        return _mainWindowHandle != IntPtr.Zero
+            && NativeMethodsForApp.SetWindowDisplayAffinity(
+                _mainWindowHandle,
+                exclude ? NativeMethodsForApp.WDA_EXCLUDEFROMCAPTURE : NativeMethodsForApp.WDA_NONE);
+    }
+
     private async void MainWindow_Closing(object? sender, CancelEventArgs e)
     {
+        if (_stopHotkeyRegistered)
+        {
+            NativeMethodsForApp.UnregisterHotKey(_mainWindowHandle, StopRecordingHotkeyId);
+            _stopHotkeyRegistered = false;
+        }
+
         StopHooks();
         if (_trayIcon is not null)
         {
@@ -1213,9 +1320,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _editorWindow ??= new SessionEditorWindow(this);
         SetEditorTitle(_session.Title);
         UpdateSessionSummary();
-        _editorWindow.RefreshSteps();
         _editorWindow.Show();
+        _editorWindow.RefreshSteps();
         _editorWindow.Activate();
+        SetCaptureExclusion(false);
         Hide();
     }
 
@@ -1405,7 +1513,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         try
         {
-            _trayIcon.ShowBalloonTip(2200, "OpenSteps is recording", "Right-click the tray icon, or double-click it, to stop.", WinForms.ToolTipIcon.None);
+            _trayIcon.ShowBalloonTip(2200, "OpenSteps is recording", "Press Ctrl+Shift+F9, use the recorder bar, or double-click the tray icon to stop.", WinForms.ToolTipIcon.None);
         }
         catch
         {
@@ -1634,8 +1742,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return false;
         }
 
-        var mainHandle = new WindowInteropHelper(this).Handle;
-        if (foreground == mainHandle)
+        // Called from the keyboard hook thread, so use the cached handle instead of touching the Window.
+        if (foreground == _mainWindowHandle)
         {
             return true;
         }
@@ -1660,7 +1768,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private static void ApplyScreenshotResult(RecordedStep step, ScreenshotCaptureResult screenshot)
     {
         step.ScreenshotPath = screenshot.FilePath;
-        step.ScreenshotRelativePath = null;
+        step.ScreenshotRelativePath = Path.Combine("images", Path.GetFileName(screenshot.FilePath)).Replace('\\', '/');
         step.EditedScreenshotPath = null;
         step.EditedScreenshotRelativePath = null;
         step.Redactions.Clear();
@@ -1696,6 +1804,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         step.MonitorDpiY = screenshot.Monitor?.DpiY;
     }
 
+    // Each capture gets a unique, step-scoped file name. Index-based names collide after steps are
+    // deleted or reordered, and reusing a path makes WPF and the session store serve stale images.
+    private static string CreateScreenshotFileName(RecordedStep step, string suffix)
+    {
+        return $"step-{step.Id.ToString("N")[..8]}-{suffix}-{DateTimeOffset.Now:yyyyMMdd-HHmmssfff}.png";
+    }
+
     private static string GetEditedScreenshotPath(RecordedStep step)
     {
         var original = step.ScreenshotPath ?? $"step-{step.Index:000}.png";
@@ -1723,6 +1838,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var bitmap = new BitmapImage();
         bitmap.BeginInit();
         bitmap.CacheOption = BitmapCacheOption.OnLoad;
+        bitmap.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
         bitmap.UriSource = new Uri(path, UriKind.Absolute);
         bitmap.EndInit();
         bitmap.Freeze();

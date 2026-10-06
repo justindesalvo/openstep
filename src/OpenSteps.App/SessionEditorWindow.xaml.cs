@@ -42,6 +42,13 @@ public partial class SessionEditorWindow : Window
 
     public void RefreshSteps()
     {
+        // Rebuilding every card re-decodes every screenshot, so skip it while hidden (e.g. during recording).
+        // ShowSessionEditor refreshes again once the window is visible.
+        if (!IsVisible)
+        {
+            return;
+        }
+
         StepsList.Items.Refresh();
         var hasSteps = _controller.Steps.Count > 0;
         EmptyState.Visibility = hasSteps ? Visibility.Collapsed : Visibility.Visible;
@@ -61,6 +68,11 @@ public partial class SessionEditorWindow : Window
     private async void SaveSession_Click(object sender, RoutedEventArgs e)
     {
         await _controller.SaveSessionFromEditorAsync();
+    }
+
+    private async void TrimSteps_Click(object sender, RoutedEventArgs e)
+    {
+        await _controller.TrimStepsFromEditorAsync();
     }
 
     private async void ExportMarkdown_Click(object sender, RoutedEventArgs e)

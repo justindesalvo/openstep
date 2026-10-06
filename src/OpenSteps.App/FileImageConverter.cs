@@ -7,6 +7,8 @@ namespace OpenSteps.App;
 
 public sealed class FileImageConverter : IValueConverter
 {
+    private const int ThumbnailDecodeWidth = 640;
+
     public object? Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         if (value is not string path || string.IsNullOrWhiteSpace(path) || !File.Exists(path))
@@ -17,6 +19,9 @@ public sealed class FileImageConverter : IValueConverter
         var image = new BitmapImage();
         image.BeginInit();
         image.CacheOption = BitmapCacheOption.OnLoad;
+        image.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
+        // Only thumbnails are bound through this converter; decoding full-resolution desktops is slow and memory heavy.
+        image.DecodePixelWidth = ThumbnailDecodeWidth;
         image.UriSource = new Uri(path, UriKind.Absolute);
         image.EndInit();
         image.Freeze();

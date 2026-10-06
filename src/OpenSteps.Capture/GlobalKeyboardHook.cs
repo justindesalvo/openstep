@@ -5,42 +5,26 @@ namespace OpenSteps.Capture;
 public sealed class GlobalKeyboardHook : IDisposable
 {
     private readonly Func<bool> _shouldIgnoreKeyboard;
-    private readonly NativeMethods.LowLevelHookProc _callback;
-    private IntPtr _hookHandle;
+    private readonly LowLevelHookThread _hookThread;
 
     public GlobalKeyboardHook(Func<bool>? shouldIgnoreKeyboard = null)
     {
         _shouldIgnoreKeyboard = shouldIgnoreKeyboard ?? (() => false);
-        _callback = HookCallback;
+        _hookThread = new LowLevelHookThread(NativeMethods.WH_KEYBOARD_LL, HookCallback);
     }
 
     public event EventHandler<KeyboardInputEventArgs>? KeyboardInputCaptured;
 
-    public bool IsRunning => _hookHandle != IntPtr.Zero;
+    public bool IsRunning => _hookThread.IsRunning;
 
     public void Start()
     {
-        if (IsRunning)
-        {
-            return;
-        }
-
-        _hookHandle = NativeMethods.SetWindowsHookEx(NativeMethods.WH_KEYBOARD_LL, _callback, IntPtr.Zero, 0);
-        if (_hookHandle == IntPtr.Zero)
-        {
-            throw new InvalidOperationException("Unable to install the global keyboard hook.");
-        }
+        _hookThread.Start("global keyboard hook");
     }
 
     public void Stop()
     {
-        if (!IsRunning)
-        {
-            return;
-        }
-
-        NativeMethods.UnhookWindowsHookEx(_hookHandle);
-        _hookHandle = IntPtr.Zero;
+        _hookThread.Stop();
     }
 
     public void Dispose()
@@ -69,7 +53,7 @@ public sealed class GlobalKeyboardHook : IDisposable
             }
         }
 
-        return NativeMethods.CallNextHookEx(_hookHandle, nCode, wParam, lParam);
+        return NativeMethods.CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam);
     }
 
     private static KeyboardInputEventArgs? ClassifyKey(int vkCode)
